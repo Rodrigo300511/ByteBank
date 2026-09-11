@@ -147,7 +147,7 @@ Durante o desenvolvimento do projeto foram praticados os seguintes conceitos de 
 No terminal, acesse a pasta do projeto e execute:
 
 ```bash
-python main.py
+python ByteBank.py
 ```
 
 Caso o comando acima não funcione, tente:
