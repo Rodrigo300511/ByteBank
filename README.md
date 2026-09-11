@@ -180,15 +180,3 @@ Contém a documentação e as informações sobre o projeto.
 O objetivo deste projeto é praticar os fundamentos da programação em Python através da criação de um sistema bancário simples, utilizando **funções, condicionais e estruturas de repetição**.
 
 ---
-
-## 🚀 Próximos passos
-
-Algumas funcionalidades que podem ser adicionadas futuramente:
-
-* 📋 Extrato bancário
-* 🔢 Limite de saques
-* 👤 Cadastro de usuários
-* 🏦 Múltiplas contas
-* 🔐 Sistema de login
-* 💾 Salvamento dos dados
-* 📊 Histórico de transações
