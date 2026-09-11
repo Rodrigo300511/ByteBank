@@ -153,7 +153,7 @@ python ByteBank.py
 Caso o comando acima não funcione, tente:
 
 ```bash
-python3 main.py
+python3 ByteBank.py
 ```
 
 ## 📁 Estrutura do projeto
@@ -163,11 +163,11 @@ A estrutura básica do projeto é:
 ```text
 sistema-bancario/
 │
-├── main.py
+├── ByteBank.py
 └── README.md
 ```
 
-### `main.py`
+### `ByteBank.py`
 
 Contém o código principal do sistema bancário.
 
