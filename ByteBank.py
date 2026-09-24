@@ -9,6 +9,7 @@ from modulos import (
     conta,
     emprestimos,
     fidelidade,
+    pix,
     repositorio,
     usuarios,
 )
@@ -72,7 +73,9 @@ while True:
     print("19 - Contratar Empréstimo")
     print("20 - Pagar Parcela do Empréstimo")
     print("21 - Ver Empréstimo")
-    print("22 - Sair")
+    print("22 - Transferir PIX")
+    print("23 - Ver Contas")
+    print("24 - Sair")
 
     opcao = int(input("Escolha uma opção: "))
 
@@ -283,6 +286,25 @@ while True:
         print(emprestimos.mostrar_emprestimo(dados_conta["divida_emprestimo"], parcelas_emprestimo))
 
     elif opcao == 22:
+        cpf_destino_input = input("CPF de destino: ")
+        valor_transferencia = float(input("Valor a transferir: "))
+        cpf_destino = "".join(caractere for caractere in cpf_destino_input if caractere.isdigit())
+
+        contas = repositorio.listar_contas()
+        contas, sucesso, mensagem = pix.transferir_pix(contas, cpf, cpf_destino, valor_transferencia)
+
+        if sucesso:
+            for conta_atualizada in contas:
+                if conta_atualizada["cpf"] in (cpf, cpf_destino):
+                    repositorio.salvar_conta(conta_atualizada["cpf"], saldo=conta_atualizada["saldo"])
+
+        print(mensagem)
+
+    elif opcao == 23:
+        contas = repositorio.listar_contas()
+        print(pix.mostrar_contas(contas, cpf))
+
+    elif opcao == 24:
         print("Programa encerrado.")
         break
 

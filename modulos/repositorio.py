@@ -124,3 +124,9 @@ def remover_proxima_parcela(cpf):
     if linha:
         conexao.execute("DELETE FROM parcelas_emprestimo WHERE id = ?", (linha[0],))
         conexao.commit()
+
+
+def listar_contas():
+    conexao = obter_conexao()
+    linhas = conexao.execute("SELECT cpf, saldo FROM usuarios").fetchall()
+    return [{"cpf": cpf, "saldo": saldo} for cpf, saldo in linhas]
