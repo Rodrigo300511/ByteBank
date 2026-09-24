@@ -66,6 +66,21 @@ def inicializar_banco():
             cpf TEXT NOT NULL REFERENCES usuarios(cpf),
             valor REAL NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS extrato (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cpf TEXT NOT NULL REFERENCES usuarios(cpf),
+            tipo TEXT NOT NULL,
+            descricao TEXT NOT NULL,
+            valor REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS pagamentos_agendados (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cpf TEXT NOT NULL REFERENCES usuarios(cpf),
+            descricao TEXT NOT NULL,
+            valor REAL NOT NULL
+        );
         """
     )
     conexao.commit()

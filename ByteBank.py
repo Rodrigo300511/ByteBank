@@ -1,6 +1,7 @@
 import sys
 
 from modulos import (
+    agendamentos,
     banco_dados,
     cambio,
     cartao_credito,
@@ -8,6 +9,8 @@ from modulos import (
     cofrinhos,
     conta,
     emprestimos,
+    estorno,
+    extrato,
     fidelidade,
     pix,
     repositorio,
@@ -49,6 +52,9 @@ while cpf is None:
 
 print(f"\nBem-vindo(a), {cpf}!")
 
+# Pilha (TAD) de operações reversíveis desta sessão, usada pela opção "Desfazer".
+pilha_desfazer = []
+
 while True:
 
     print("\n===== BANCO =====")
@@ -75,7 +81,12 @@ while True:
     print("21 - Ver Empréstimo")
     print("22 - Transferir PIX")
     print("23 - Ver Contas")
-    print("24 - Sair")
+    print("24 - Extrato")
+    print("25 - Desfazer Última Operação")
+    print("26 - Agendar Pagamento")
+    print("27 - Ver Pagamentos Agendados")
+    print("28 - Processar Próximo Pagamento Agendado")
+    print("29 - Sair")
 
     opcao = int(input("Escolha uma opção: "))
 
@@ -86,6 +97,8 @@ while True:
             dados_conta = repositorio.carregar_conta(cpf)
             saldo = conta.deposito(dados_conta["saldo"], valor_deposito)
             repositorio.salvar_conta(cpf, saldo=saldo)
+            pilha_desfazer.append({"tipo": "deposito", "valor": valor_deposito})
+            repositorio.registrar_extrato(cpf, "deposito", "Depósito em conta", valor_deposito)
             print(f"Depósito realizado! Saldo: R$ {saldo:.2f}")
         else:
             print("Valor de depósito inválido.")
@@ -115,6 +128,8 @@ while True:
 
                 repositorio.registrar_gasto(cpf, categoria_escolhida, valor_saque)
                 repositorio.salvar_conta(cpf, saldo=saldo, pontos_bytepoints=pontos_bytepoints)
+                pilha_desfazer.append({"tipo": "saque", "valor": valor_saque})
+                repositorio.registrar_extrato(cpf, "saque", f"Saque - {categoria_escolhida}", -valor_saque)
                 print(f"Saque realizado! Saldo: R$ {saldo:.2f} | +{pontos_ganhos} BytePoints")
             else:
                 print("Categoria inválida. Saque cancelado.")
@@ -140,6 +155,10 @@ while True:
         )
         repositorio.salvar_conta(cpf, saldo=saldo)
         repositorio.salvar_caixinhas(cpf, caixinhas)
+        if saldo != dados_conta["saldo"]:
+            repositorio.registrar_extrato(
+                cpf, "cofrinho_guardar", f"Guardado na caixinha '{nome_caixinha}'", saldo - dados_conta["saldo"]
+            )
         print(mensagem)
 
     elif opcao == 6:
@@ -152,6 +171,10 @@ while True:
         )
         repositorio.salvar_conta(cpf, saldo=saldo)
         repositorio.salvar_caixinhas(cpf, caixinhas)
+        if saldo != dados_conta["saldo"]:
+            repositorio.registrar_extrato(
+                cpf, "cofrinho_resgatar", f"Resgatado da caixinha '{nome_caixinha}'", saldo - dados_conta["saldo"]
+            )
         print(mensagem)
 
     elif opcao == 7:
@@ -190,6 +213,10 @@ while True:
             dados_conta["saldo"], dados_conta["limite_disponivel"], dados_conta["saldo_fatura"]
         )
         repositorio.salvar_conta(cpf, saldo=saldo, limite_disponivel=limite_disponivel, saldo_fatura=saldo_fatura)
+        if saldo != dados_conta["saldo"]:
+            repositorio.registrar_extrato(
+                cpf, "fatura", "Pagamento de fatura do cartão", saldo - dados_conta["saldo"]
+            )
         print(mensagem)
 
     elif opcao == 12:
@@ -208,6 +235,8 @@ while True:
         saldo, mensagem = cambio.comprar_moeda_estrangeira(dados_conta["saldo"], saldos_moedas, moeda, valor_brl)
         repositorio.salvar_conta(cpf, saldo=saldo)
         repositorio.salvar_saldos_moedas(cpf, saldos_moedas)
+        if saldo != dados_conta["saldo"]:
+            repositorio.registrar_extrato(cpf, "cambio", f"Compra de {moeda}", saldo - dados_conta["saldo"])
         print(mensagem)
 
     elif opcao == 14:
@@ -218,6 +247,8 @@ while True:
         saldo, mensagem = cambio.vender_moeda_estrangeira(dados_conta["saldo"], saldos_moedas, moeda, quantidade)
         repositorio.salvar_conta(cpf, saldo=saldo)
         repositorio.salvar_saldos_moedas(cpf, saldos_moedas)
+        if saldo != dados_conta["saldo"]:
+            repositorio.registrar_extrato(cpf, "cambio", f"Venda de {moeda}", saldo - dados_conta["saldo"])
         print(mensagem)
 
     elif opcao == 15:
@@ -235,6 +266,8 @@ while True:
             dados_conta["saldo"], dados_conta["pontos_bytepoints"], pontos_resgatar
         )
         repositorio.salvar_conta(cpf, saldo=saldo, pontos_bytepoints=pontos_bytepoints)
+        if saldo != dados_conta["saldo"]:
+            repositorio.registrar_extrato(cpf, "cashback", "Resgate de cashback", saldo - dados_conta["saldo"])
         print(mensagem)
 
     elif opcao == 18:
@@ -262,6 +295,9 @@ while True:
         novas_parcelas = parcelas_emprestimo[tamanho_antes:]
         if novas_parcelas:
             repositorio.adicionar_parcelas(cpf, novas_parcelas)
+            repositorio.registrar_extrato(
+                cpf, "emprestimo", f"Empréstimo contratado ({numero_parcelas}x)", saldo - dados_conta["saldo"]
+            )
 
         print(mensagem)
 
@@ -277,6 +313,9 @@ while True:
 
         if len(parcelas_emprestimo) < tamanho_antes:
             repositorio.remover_proxima_parcela(cpf)
+            repositorio.registrar_extrato(
+                cpf, "emprestimo", "Pagamento de parcela do empréstimo", saldo - dados_conta["saldo"]
+            )
 
         print(mensagem)
 
@@ -298,6 +337,12 @@ while True:
                 if conta_atualizada["cpf"] in (cpf, cpf_destino):
                     repositorio.salvar_conta(conta_atualizada["cpf"], saldo=conta_atualizada["saldo"])
 
+            pilha_desfazer.append({"tipo": "pix", "valor": valor_transferencia, "cpf_destino": cpf_destino})
+            repositorio.registrar_extrato(cpf, "pix_enviado", f"PIX enviado para {cpf_destino}", -valor_transferencia)
+            repositorio.registrar_extrato(
+                cpf_destino, "pix_recebido", f"PIX recebido de {cpf}", valor_transferencia
+            )
+
         print(mensagem)
 
     elif opcao == 23:
@@ -305,6 +350,59 @@ while True:
         print(pix.mostrar_contas(contas, cpf))
 
     elif opcao == 24:
+        movimentacoes = repositorio.carregar_extrato(cpf)
+        print(extrato.mostrar_extrato(movimentacoes))
+
+    elif opcao == 25:
+        dados_conta = repositorio.carregar_conta(cpf)
+        saldo, estorno_destino, mensagem = estorno.desfazer_ultima_operacao(dados_conta["saldo"], pilha_desfazer)
+        repositorio.salvar_conta(cpf, saldo=saldo)
+
+        if estorno_destino:
+            cpf_destino_estorno, valor_estornado = estorno_destino
+            dados_destino = repositorio.carregar_conta(cpf_destino_estorno)
+            repositorio.salvar_conta(cpf_destino_estorno, saldo=conta.saque(dados_destino["saldo"], valor_estornado))
+
+        if "desfeito" in mensagem or "estornado" in mensagem:
+            repositorio.registrar_extrato(cpf, "estorno", mensagem, saldo - dados_conta["saldo"])
+
+        print(mensagem)
+
+    elif opcao == 26:
+        descricao_pagamento = input("Descrição do pagamento: ")
+        valor_pagamento = float(input("Valor do pagamento: "))
+        fila_pagamentos = repositorio.carregar_pagamentos_agendados(cpf)
+        tamanho_antes = len(fila_pagamentos)
+
+        mensagem = agendamentos.agendar_pagamento(fila_pagamentos, descricao_pagamento, valor_pagamento)
+
+        if len(fila_pagamentos) > tamanho_antes:
+            repositorio.adicionar_pagamento_agendado(cpf, descricao_pagamento, valor_pagamento)
+
+        print(mensagem)
+
+    elif opcao == 27:
+        fila_pagamentos = repositorio.carregar_pagamentos_agendados(cpf)
+        print(agendamentos.mostrar_pagamentos_agendados(fila_pagamentos))
+
+    elif opcao == 28:
+        dados_conta = repositorio.carregar_conta(cpf)
+        fila_pagamentos = repositorio.carregar_pagamentos_agendados(cpf)
+        tamanho_antes = len(fila_pagamentos)
+        proximo_pagamento = fila_pagamentos[0] if fila_pagamentos else None
+
+        saldo, mensagem = agendamentos.processar_proximo_pagamento(dados_conta["saldo"], fila_pagamentos)
+
+        if len(fila_pagamentos) < tamanho_antes:
+            repositorio.remover_proximo_pagamento_agendado(cpf)
+            repositorio.salvar_conta(cpf, saldo=saldo)
+            repositorio.registrar_extrato(
+                cpf, "pagamento_agendado", proximo_pagamento["descricao"], -proximo_pagamento["valor"]
+            )
+
+        print(mensagem)
+
+    elif opcao == 29:
         print("Programa encerrado.")
         break
 

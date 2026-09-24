@@ -130,3 +130,48 @@ def listar_contas():
     conexao = obter_conexao()
     linhas = conexao.execute("SELECT cpf, saldo FROM usuarios").fetchall()
     return [{"cpf": cpf, "saldo": saldo} for cpf, saldo in linhas]
+
+
+def registrar_extrato(cpf, tipo, descricao, valor):
+    conexao = obter_conexao()
+    conexao.execute(
+        "INSERT INTO extrato (cpf, tipo, descricao, valor) VALUES (?, ?, ?, ?)",
+        (cpf, tipo, descricao, valor),
+    )
+    conexao.commit()
+
+
+def carregar_extrato(cpf):
+    conexao = obter_conexao()
+    linhas = conexao.execute(
+        "SELECT tipo, descricao, valor FROM extrato WHERE cpf = ? ORDER BY id ASC", (cpf,)
+    ).fetchall()
+    return [{"tipo": tipo, "descricao": descricao, "valor": valor} for tipo, descricao, valor in linhas]
+
+
+def carregar_pagamentos_agendados(cpf):
+    conexao = obter_conexao()
+    linhas = conexao.execute(
+        "SELECT descricao, valor FROM pagamentos_agendados WHERE cpf = ? ORDER BY id ASC", (cpf,)
+    ).fetchall()
+    return [{"descricao": descricao, "valor": valor} for descricao, valor in linhas]
+
+
+def adicionar_pagamento_agendado(cpf, descricao, valor):
+    conexao = obter_conexao()
+    conexao.execute(
+        "INSERT INTO pagamentos_agendados (cpf, descricao, valor) VALUES (?, ?, ?)",
+        (cpf, descricao, valor),
+    )
+    conexao.commit()
+
+
+def remover_proximo_pagamento_agendado(cpf):
+    conexao = obter_conexao()
+    linha = conexao.execute(
+        "SELECT id FROM pagamentos_agendados WHERE cpf = ? ORDER BY id ASC LIMIT 1", (cpf,)
+    ).fetchone()
+
+    if linha:
+        conexao.execute("DELETE FROM pagamentos_agendados WHERE id = ?", (linha[0],))
+        conexao.commit()
