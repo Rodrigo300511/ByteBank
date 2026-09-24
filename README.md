@@ -4,9 +4,8 @@ Projeto Prático Avaliativo da disciplina de Algoritmo e Estrutura de Dados (BD0
 
 ## 👥 Equipe
 
-* [Nome do integrante 1]
-* [Nome do integrante 2]
-* [Nome do integrante 3]
+* Rodrigo Aguiar
+* Kiara Souza
 
 ## 🧩 Níveis do projeto
 
