@@ -12,6 +12,8 @@ from modulos import (
     estorno,
     extrato,
     fidelidade,
+    log_http,
+    persistencia_txt,
     pix,
     repositorio,
     usuarios,
@@ -41,8 +43,9 @@ while cpf is None:
 
     elif opcao_acesso == 2:
         cpf_digitado = input("CPF: ")
+        nome_digitado = input("Nome: ")
         senha_digitada = input("Crie uma senha (mínimo 6 caracteres): ")
-        print(usuarios.cadastrar_usuario(cpf_digitado, senha_digitada))
+        print(usuarios.cadastrar_usuario(cpf_digitado, senha_digitada, nome_digitado))
 
     elif opcao_acesso == 3:
         sys.exit()
@@ -50,7 +53,7 @@ while cpf is None:
     else:
         print("Opção inválida.")
 
-print(f"\nBem-vindo(a), {cpf}!")
+print(f"\nBem-vindo(a), {repositorio.carregar_cliente(cpf).nome or cpf}!")
 
 # Pilha (TAD) de operações reversíveis desta sessão, usada pela opção "Desfazer".
 pilha_desfazer = []
@@ -86,7 +89,15 @@ while True:
     print("26 - Agendar Pagamento")
     print("27 - Ver Pagamentos Agendados")
     print("28 - Processar Próximo Pagamento Agendado")
-    print("29 - Sair")
+    print("29 - Meu Perfil e Contatos")
+    print("30 - Limite da Conta Corrente")
+    print("31 - Aumentar Limite da Conta Corrente")
+    print("32 - Dados do Cartão de Crédito")
+    print("33 - Parcelar Fatura do Cartão")
+    print("34 - Exportar Contas para TXT")
+    print("35 - Importar Contas do TXT")
+    print("36 - Analisar Log HTTP")
+    print("37 - Sair")
 
     opcao = int(input("Escolha uma opção: "))
 
@@ -110,8 +121,8 @@ while True:
         if valor_saque <= 0:
             print("Valor de saque inválido.")
 
-        elif valor_saque > dados_conta["saldo"]:
-            print("Saldo insuficiente.")
+        elif valor_saque > dados_conta["saldo"] + dados_conta["limite_conta"]:
+            print("Saldo e limite insuficientes.")
 
         else:
             print("\nCategorias disponíveis:")
@@ -204,6 +215,7 @@ while True:
 
         if saldo_fatura > saldo_fatura_antes:
             repositorio.registrar_compra_credito(cpf, estabelecimento, valor_compra)
+            repositorio.limpar_parcelas_cartao(cpf)  # parcelamento anterior não vale mais para a nova fatura
 
         print(mensagem)
 
@@ -214,6 +226,7 @@ while True:
         )
         repositorio.salvar_conta(cpf, saldo=saldo, limite_disponivel=limite_disponivel, saldo_fatura=saldo_fatura)
         if saldo != dados_conta["saldo"]:
+            repositorio.limpar_parcelas_cartao(cpf)
             repositorio.registrar_extrato(
                 cpf, "fatura", "Pagamento de fatura do cartão", saldo - dados_conta["saldo"]
             )
@@ -403,6 +416,77 @@ while True:
         print(mensagem)
 
     elif opcao == 29:
+        cliente = repositorio.carregar_cliente(cpf)
+        print(f"\nNome: {cliente.nome or '(não informado)'}\nCPF: {cliente.cpf}")
+        print(cliente.consultar_contatos())
+
+        if input("Deseja alterar o nome ou adicionar contato? (s/n): ").lower() == "s":
+            novo_nome = input("Nome (Enter para manter): ").strip()
+            if novo_nome:
+                cliente.nome = novo_nome
+            tipo_contato = input("Tipo de contato (ex: email, telefone; Enter para pular): ").strip().lower()
+            if tipo_contato:
+                cliente.adicionar_contato(tipo_contato, input("Valor do contato: ").strip())
+            repositorio.salvar_cliente(cliente)
+            print("Perfil atualizado!")
+
+    elif opcao == 30:
+        conta_corrente = repositorio.carregar_conta_corrente(cpf)
+        print(f"Limite da conta: R$ {conta_corrente.consultar_limite():.2f}")
+
+    elif opcao == 31:
+        valor_aumento = float(input("Digite o valor a aumentar no limite: "))
+        conta_corrente = repositorio.carregar_conta_corrente(cpf)
+        mensagem = conta_corrente.aumentar_limite(valor_aumento)
+        repositorio.salvar_conta_corrente(conta_corrente)
+        print(mensagem)
+
+    elif opcao == 32:
+        cartao = repositorio.carregar_cartao(cpf)
+        print(f"\nTitular: {cartao.nome}")
+        print(f"Número: {cartao.numero}")
+        print(f"Validade: {cartao.validade} | CVV: {cartao.cvv}")
+        print(f"Vencimento da fatura: dia {cartao.data_pagamento}")
+        print(f"Limite total: R$ {cartao.limite:.2f}")
+        print(f"Limite disponível: R$ {cartao.consultar_limite():.2f}")
+        print(f"Saldo da fatura: R$ {cartao.consultar_saldo():.2f}")
+        if cartao.parcelas:
+            print(f"Parcelamento: {len(cartao.parcelas)}x de R$ {cartao.parcelas[0]:.2f}")
+
+    elif opcao == 33:
+        quantidade_parcelas = int(input("Em quantas parcelas? "))
+        juros_mensal = float(input("Juros mensal em % (0 para sem juros): ")) / 100
+        cartao = repositorio.carregar_cartao(cpf)
+        mensagem = cartao.parcelar_saldo(quantidade_parcelas, juros_mensal)
+        repositorio.salvar_cartao(cpf, cartao)
+        print(mensagem)
+
+    elif opcao == 34:
+        contas_exportadas = repositorio.listar_contas_completas()
+        persistencia_txt.salvar_contas_txt(contas_exportadas)
+        print(f"{len(contas_exportadas)} conta(s) exportada(s) para '{persistencia_txt.CAMINHO_CONTAS_TXT}'.")
+
+    elif opcao == 35:
+        contas_importadas = persistencia_txt.carregar_contas_txt()
+
+        if not contas_importadas:
+            print(f"Nenhuma conta encontrada em '{persistencia_txt.CAMINHO_CONTAS_TXT}'.")
+        elif input("Isso sobrescreve saldo, nome e limite das contas do arquivo. Continuar? (s/n): ").lower() == "s":
+            restauradas = repositorio.restaurar_contas(contas_importadas)
+            print(f"{restauradas} de {len(contas_importadas)} conta(s) restaurada(s).")
+        else:
+            print("Importação cancelada.")
+
+    elif opcao == 36:
+        caminho_log = input("Caminho do arquivo de log: ")
+        try:
+            resultado_log = log_http.analisar_log(caminho_log)
+            print(f"200 (Sucesso): {resultado_log[200]}")
+            print(f"404 (Não Encontrado): {resultado_log[404]}")
+        except OSError:
+            print("Não foi possível abrir o arquivo de log.")
+
+    elif opcao == 37:
         print("Programa encerrado.")
         break
 

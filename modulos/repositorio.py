@@ -1,17 +1,22 @@
+import secrets
+from datetime import date
+
 from modulos.banco_dados import obter_conexao
 from modulos.cambio import TAXAS_CAMBIO
+from modulos.modelos import CartaoCredito, Cliente, ContaCorrente
 
 
 def carregar_conta(cpf):
     conexao = obter_conexao()
     linha = conexao.execute(
-        "SELECT saldo, limite_credito, limite_disponivel, saldo_fatura, pontos_bytepoints, divida_emprestimo "
-        "FROM usuarios WHERE cpf = ?",
+        "SELECT saldo, limite_credito, limite_disponivel, saldo_fatura, pontos_bytepoints, divida_emprestimo, "
+        "limite_conta FROM usuarios WHERE cpf = ?",
         (cpf,),
     ).fetchone()
 
-    saldo, limite_credito, limite_disponivel, saldo_fatura, pontos_bytepoints, divida_emprestimo = linha
+    saldo, limite_credito, limite_disponivel, saldo_fatura, pontos_bytepoints, divida_emprestimo, limite_conta = linha
     return {
+        "limite_conta": limite_conta,
         "saldo": saldo,
         "limite_credito": limite_credito,
         "limite_disponivel": limite_disponivel,
@@ -128,8 +133,8 @@ def remover_proxima_parcela(cpf):
 
 def listar_contas():
     conexao = obter_conexao()
-    linhas = conexao.execute("SELECT cpf, saldo FROM usuarios").fetchall()
-    return [{"cpf": cpf, "saldo": saldo} for cpf, saldo in linhas]
+    linhas = conexao.execute("SELECT cpf, saldo, limite_conta FROM usuarios").fetchall()
+    return [{"cpf": cpf, "saldo": saldo, "limite_conta": limite} for cpf, saldo, limite in linhas]
 
 
 def registrar_extrato(cpf, tipo, descricao, valor):
@@ -175,3 +180,110 @@ def remover_proximo_pagamento_agendado(cpf):
     if linha:
         conexao.execute("DELETE FROM pagamentos_agendados WHERE id = ?", (linha[0],))
         conexao.commit()
+
+
+def carregar_cliente(cpf):
+    conexao = obter_conexao()
+    (nome,) = conexao.execute("SELECT nome FROM usuarios WHERE cpf = ?", (cpf,)).fetchone()
+    linhas = conexao.execute("SELECT tipo, valor FROM contatos WHERE cpf = ? ORDER BY id ASC", (cpf,)).fetchall()
+    return Cliente(cpf, nome, dict(linhas))
+
+
+def salvar_cliente(cliente):
+    conexao = obter_conexao()
+    conexao.execute("UPDATE usuarios SET nome = ? WHERE cpf = ?", (cliente.nome, cliente.cpf))
+    for tipo, valor in cliente.contatos.items():
+        conexao.execute(
+            "INSERT INTO contatos (cpf, tipo, valor) VALUES (?, ?, ?) "
+            "ON CONFLICT(cpf, tipo) DO UPDATE SET valor = excluded.valor",
+            (cliente.cpf, tipo, valor),
+        )
+    conexao.commit()
+
+
+def carregar_conta_corrente(cpf):
+    dados = carregar_conta(cpf)
+    return ContaCorrente(cpf, dados["saldo"], dados["limite_conta"])
+
+
+def salvar_conta_corrente(conta_corrente):
+    salvar_conta(conta_corrente.id_cliente, saldo=conta_corrente.saldo, limite_conta=conta_corrente.limite)
+
+
+def carregar_cartao(cpf):
+    conexao = obter_conexao()
+    linha = conexao.execute(
+        "SELECT numero, validade, cvv, data_pagamento FROM cartoes WHERE cpf = ?", (cpf,)
+    ).fetchone()
+
+    if linha is None:
+        # Cartão emitido na primeira consulta, com dados gerados localmente.
+        hoje = date.today()
+        numero = "".join(str(secrets.randbelow(10)) for _ in range(16))
+        validade = f"{hoje.month:02d}/{(hoje.year + 5) % 100:02d}"
+        cvv = f"{secrets.randbelow(1000):03d}"
+        data_pagamento = 10
+        conexao.execute(
+            "INSERT INTO cartoes (cpf, numero, validade, cvv, data_pagamento) VALUES (?, ?, ?, ?, ?)",
+            (cpf, numero, validade, cvv, data_pagamento),
+        )
+        conexao.commit()
+    else:
+        numero, validade, cvv, data_pagamento = linha
+
+    dados = carregar_conta(cpf)
+    nome = carregar_cliente(cpf).nome or cpf
+    cartao = CartaoCredito(nome, numero, validade, cvv, dados["limite_credito"], data_pagamento)
+    cartao.saldo = dados["saldo_fatura"]
+    cartao.parcelas = [
+        valor
+        for (valor,) in conexao.execute(
+            "SELECT valor FROM parcelas_cartao WHERE cpf = ? ORDER BY id ASC", (cpf,)
+        ).fetchall()
+    ]
+    return cartao
+
+
+def salvar_cartao(cpf, cartao):
+    conexao = obter_conexao()
+    conexao.execute(
+        "UPDATE usuarios SET limite_credito = ?, limite_disponivel = ?, saldo_fatura = ? WHERE cpf = ?",
+        (cartao.limite, cartao.consultar_limite(), cartao.saldo, cpf),
+    )
+    conexao.execute("DELETE FROM parcelas_cartao WHERE cpf = ?", (cpf,))
+    conexao.executemany(
+        "INSERT INTO parcelas_cartao (cpf, valor) VALUES (?, ?)",
+        [(cpf, valor) for valor in cartao.parcelas],
+    )
+    conexao.commit()
+
+
+def listar_contas_completas():
+    conexao = obter_conexao()
+    linhas = conexao.execute("SELECT cpf, nome, saldo, limite_conta FROM usuarios").fetchall()
+    return [
+        {"cpf": cpf, "nome": nome, "saldo": saldo, "limite_conta": limite_conta}
+        for cpf, nome, saldo, limite_conta in linhas
+    ]
+
+
+def restaurar_contas(contas):
+    """Atualiza contas já cadastradas; CPFs ausentes do banco não são criados (faltam salt e senha)."""
+    conexao = obter_conexao()
+    restauradas = 0
+
+    for conta in contas:
+        cursor = conexao.execute(
+            "UPDATE usuarios SET nome = ?, saldo = ?, limite_conta = ? WHERE cpf = ?",
+            (conta["nome"], conta["saldo"], conta["limite_conta"], conta["cpf"]),
+        )
+        restauradas += cursor.rowcount
+
+    conexao.commit()
+    return restauradas
+
+
+def limpar_parcelas_cartao(cpf):
+    conexao = obter_conexao()
+    conexao.execute("DELETE FROM parcelas_cartao WHERE cpf = ?", (cpf,))
+    conexao.commit()

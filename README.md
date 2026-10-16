@@ -15,12 +15,17 @@ Projeto Prático Avaliativo da disciplina de Algoritmo e Estrutura de Dados (BD0
 | 2 — Múltiplas Contas | Contas em memória (lista de dicionários) e transferência PIX | [modulos/pix.py](modulos/pix.py) (opções 22-23) |
 | 3 — Estruturas Lineares | Extrato, Estorno (TAD Pilha) e Fila de Pagamentos Agendados (TAD Fila) | [modulos/extrato.py](modulos/extrato.py), [modulos/estorno.py](modulos/estorno.py), [modulos/agendamentos.py](modulos/agendamentos.py) (opções 24-28) |
 | Bônus | Cofrinhos, categorização de gastos, cartão de crédito, câmbio, fidelidade/cashback, empréstimos | Ver "Funcionalidades" abaixo |
+| Extras | Classes (POO), persistência em TXT e analisador de log HTTP | [modulos/modelos.py](modulos/modelos.py), [modulos/persistencia_txt.py](modulos/persistencia_txt.py), [modulos/log_http.py](modulos/log_http.py) (opções 29-36) |
 
 ## 📌 Funcionalidades
 
 * 🔐 Cadastro e login por CPF (com validação do dígito verificador) e senha com hash seguro
 * 💾 Persistência em banco de dados SQLite: os dados de cada usuário sobrevivem entre execuções do programa
-* 💰 Depósito e saque em conta corrente
+* 💰 Depósito e saque em conta corrente, com limite (cheque especial) que pode ser consultado e aumentado; o limite vale para saque e PIX
+* 👤 Perfil do cliente (nome e contatos) e cartão de crédito com número, validade, CVV e vencimento
+* 🧾 Parcelamento da fatura do cartão (com ou sem juros)
+* 📝 Exportação/importação das contas em arquivo TXT (`contas.txt`)
+* 🔎 Analisador de log HTTP: conta as requisições 200 (Sucesso) e 404 (Não Encontrado)
 * 💸 Transferência PIX entre contas cadastradas, e listagem das contas do banco
 * 📄 Extrato unificado com todas as movimentações da conta
 * ↩️ Estorno/Desfazer da última operação (depósito, saque ou PIX), usando uma pilha
@@ -48,6 +53,9 @@ ByteBank/
 │   ├── banco_dados.py    # Conexão SQLite e criação das tabelas (schema)
 │   ├── usuarios.py       # Cadastro/login: validação de CPF e hash de senha
 │   ├── repositorio.py    # Camada de acesso a dados: carrega/salva o estado de cada usuário no banco
+│   ├── modelos.py        # Classes Cliente, ContaCorrente e CartaoCredito (POO)
+│   ├── persistencia_txt.py # salvar_contas_txt / carregar_contas_txt (backup em TXT)
+│   ├── log_http.py       # Analisador de log de servidor (contagem de 200 e 404)
 │   ├── conta.py          # Depósito, saque e consulta de saldo (usada por todos os outros módulos)
 │   ├── cofrinhos.py      # Criar/guardar/resgatar caixinhas e simular rendimento
 │   ├── categorias.py     # Lista de categorias e relatório agregado de gastos
@@ -60,6 +68,7 @@ ByteBank/
 │   ├── estorno.py        # Estorno/Desfazer da última operação (TAD Pilha)
 │   └── agendamentos.py   # Fila de pagamentos agendados (TAD Fila)
 ├── bytebank.db           # Banco SQLite (criado automaticamente na 1ª execução; não versionado)
+├── contas.txt            # Backup das contas em TXT (gerado pela opção 34)
 └── README.md
 ```
 
@@ -68,6 +77,8 @@ ByteBank/
 * **`ByteBank.py`** cuida só de interface: mostra as telas, lê o `input()` do usuário e decide qual função chamar. Ele não sabe *como* cada operação funciona por dentro.
 * **`conta.py`, `cofrinhos.py`, `categorias.py`, `cartao_credito.py`, `cambio.py`, `fidelidade.py` e `emprestimos.py`** contêm só a regra de negócio de cada domínio: recebem valores simples (números, dicionários, listas), calculam e **retornam** o resultado + uma mensagem — nenhuma delas usa `print()`, lê `input()` ou conhece o banco de dados. Isso as torna testáveis isoladamente e reutilizáveis em qualquer interface (terminal, web, testes automatizados).
 * **`banco_dados.py`** e **`repositorio.py`** são a camada de persistência: sabem *onde* e *como* os dados são guardados (SQLite), mas não sabem nada sobre regras de saldo/limite/juros. `ByteBank.py` busca o estado do usuário logado no `repositorio`, passa para a função de negócio correspondente, e salva o resultado de volta — as duas camadas nunca se misturam.
+* **`modelos.py`** traz as classes `Cliente` (CPF, nome, contatos), `ContaCorrente` (saldo, limite, saque, depósito, aumento de limite) e `CartaoCredito` (limite, fatura, pagamento e parcelamento). O `repositorio` converte as linhas do banco nessas classes (`carregar_cliente`, `carregar_conta_corrente`, `carregar_cartao`) e salva de volta.
+* **`persistencia_txt.py`** e **`log_http.py`** são módulos independentes do banco: o primeiro grava/restaura as contas em texto (`cpf;nome;saldo;limite_conta`), o segundo lê um log no formato Apache/Nginx e conta os status 200 e 404.
 * **`usuarios.py`** isola tudo relacionado a autenticação (validação de CPF e hash de senha), separado das regras bancárias.
 * Módulos que precisam somar/subtrair valores (`cofrinhos`, `cartao_credito`, `cambio`, `fidelidade`, `emprestimos`, `pix`, `estorno`, `agendamentos`) importam e reaproveitam `deposito()`/`saque()` de `conta.py`, em vez de duplicar a conta.
 * **`pix.py`** materializa as contas como uma **lista de dicionários** (`[{"cpf": ..., "saldo": ...}, ...]`) carregada do banco, faz uma **busca linear** nessa lista para achar origem/destino e move o valor entre os dois dicionários — é a estrutura "múltiplas contas em memória" pedida no Nível 2, mesmo com o SQLite persistindo o resultado depois.
@@ -85,7 +96,7 @@ Antes de acessar o menu bancário, o usuário passa por uma tela de acesso:
 3 - Sair
 ```
 
-* **Cadastro:** pede CPF e senha. O CPF é validado pelo algoritmo real do dígito verificador (rejeita CPFs com formato ou dígitos inválidos, incluindo sequências como `111.111.111-11`); a senha precisa ter pelo menos 6 caracteres.
+* **Cadastro:** pede CPF, nome e senha. O CPF é validado pelo algoritmo real do dígito verificador (rejeita CPFs com formato ou dígitos inválidos, incluindo sequências como `111.111.111-11`); a senha precisa ter pelo menos 6 caracteres.
 * **Senha com segurança:** a senha nunca é guardada em texto puro. É gerada uma *salt* aleatória por usuário (`secrets.token_bytes`) e o hash é calculado com **PBKDF2-HMAC-SHA256** (100 mil iterações) — tudo com a biblioteca padrão do Python, sem dependências externas. No login, a comparação do hash usa `hmac.compare_digest` para evitar *timing attacks*.
 * **Login:** autentica pelo CPF (aceita com ou sem pontuação/traço — só os dígitos são considerados) e a senha. Cada usuário só enxerga e altera os próprios dados.
 * Todos os dados da conta (saldo, caixinhas, histórico de gastos, fatura, carteira de moedas, BytePoints, empréstimo, extrato e pagamentos agendados) ficam vinculados ao CPF no banco `bytebank.db` e continuam disponíveis da próxima vez que o usuário fizer login — mesmo depois de fechar o programa. A única exceção é a pilha de desfazer, que existe só durante a sessão atual.
@@ -124,10 +135,24 @@ Depois de entrar ou criar a conta, o usuário verá o menu principal:
 26 - Agendar Pagamento
 27 - Ver Pagamentos Agendados
 28 - Processar Próximo Pagamento Agendado
-29 - Sair
+29 - Meu Perfil e Contatos
+30 - Limite da Conta Corrente
+31 - Aumentar Limite da Conta Corrente
+32 - Dados do Cartão de Crédito
+33 - Parcelar Fatura do Cartão
+34 - Exportar Contas para TXT
+35 - Importar Contas do TXT
+36 - Analisar Log HTTP
+37 - Sair
 ```
 
-O programa continua funcionando em loop até que o usuário escolha a opção **29 - Sair**.
+O programa continua funcionando em loop até que o usuário escolha a opção **37 - Sair**.
+
+Observações:
+
+* O limite da conta (opção 31) permite sacar e fazer PIX acima do saldo; as demais operações (caixinhas, empréstimo, fatura etc.) usam apenas o saldo.
+* O parcelamento da fatura (opção 33) é apenas registrado e exibido na opção 32; ele é descartado ao pagar a fatura ou fazer uma nova compra no crédito.
+* A importação (opção 35) só atualiza contas já cadastradas no banco, pois o TXT não guarda senhas.
 
 ## ▶️ Como executar
 
@@ -145,6 +170,8 @@ Caso o comando acima não funcione, tente:
 python3 ByteBank.py
 ```
 
+Para analisar um log fora do menu: `python -m modulos.log_http arquivo.log`.
+
 Nenhuma dependência externa é necessária — `sqlite3`, `hashlib`, `hmac` e `secrets` fazem parte da biblioteca padrão do Python. Na primeira execução, o arquivo `bytebank.db` é criado automaticamente na pasta do projeto (ele fica fora do controle de versão, veja `.gitignore`).
 
 ## 📚 Conceitos praticados
@@ -158,6 +185,8 @@ Durante o desenvolvimento do projeto foram praticados os seguintes conceitos:
 * Agregação de dados com dicionários (simulando um `GROUP BY` em memória)
 * Cálculos financeiros simples (juros simples, percentuais, parcelamento)
 * Organização de código em **módulos e pacotes** (`import`)
+* **Programação orientada a objetos**: classes, atributos e métodos
+* Leitura e escrita de **arquivos de texto** (`open`, `csv`) e expressões regulares (`re`) para análise de log
 * Funções puras (sem efeito colateral de I/O) separadas da camada de apresentação e da camada de dados
 * Banco de dados relacional com **SQLite** (`CREATE TABLE`, `INSERT`, `UPDATE`, `DELETE`, `SELECT`, chaves estrangeiras)
 * Autenticação: hash de senha com salt (**PBKDF2-HMAC-SHA256**) e comparação em tempo constante (`hmac.compare_digest`)

@@ -81,6 +81,36 @@ def inicializar_banco():
             descricao TEXT NOT NULL,
             valor REAL NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS contatos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cpf TEXT NOT NULL REFERENCES usuarios(cpf),
+            tipo TEXT NOT NULL,
+            valor TEXT NOT NULL,
+            UNIQUE(cpf, tipo)
+        );
+
+        CREATE TABLE IF NOT EXISTS cartoes (
+            cpf TEXT PRIMARY KEY REFERENCES usuarios(cpf),
+            numero TEXT NOT NULL,
+            validade TEXT NOT NULL,
+            cvv TEXT NOT NULL,
+            data_pagamento INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS parcelas_cartao (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cpf TEXT NOT NULL REFERENCES usuarios(cpf),
+            valor REAL NOT NULL
+        );
         """
     )
+
+    # Bancos criados antes dos modelos OO não têm estas colunas em `usuarios`.
+    colunas = {linha[1] for linha in conexao.execute("PRAGMA table_info(usuarios)")}
+    if "nome" not in colunas:
+        conexao.execute("ALTER TABLE usuarios ADD COLUMN nome TEXT NOT NULL DEFAULT ''")
+    if "limite_conta" not in colunas:
+        conexao.execute("ALTER TABLE usuarios ADD COLUMN limite_conta REAL NOT NULL DEFAULT 0")
+
     conexao.commit()

@@ -29,7 +29,7 @@ def gerar_hash_senha(senha, salt=None):
     return salt.hex(), hash_senha.hex()
 
 
-def cadastrar_usuario(cpf, senha):
+def cadastrar_usuario(cpf, senha, nome=""):
     cpf_numerico = "".join(caractere for caractere in cpf if caractere.isdigit())
 
     if not validar_cpf(cpf_numerico):
@@ -47,8 +47,8 @@ def cadastrar_usuario(cpf, senha):
 
     salt, hash_senha = gerar_hash_senha(senha)
     conexao.execute(
-        "INSERT INTO usuarios (cpf, salt, senha_hash) VALUES (?, ?, ?)",
-        (cpf_numerico, salt, hash_senha),
+        "INSERT INTO usuarios (cpf, salt, senha_hash, nome) VALUES (?, ?, ?, ?)",
+        (cpf_numerico, salt, hash_senha, nome.strip()),
     )
     conexao.commit()
     return "Conta criada com sucesso! Faça login para continuar."

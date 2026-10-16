@@ -20,8 +20,8 @@ def transferir_pix(contas, cpf_origem, cpf_destino, valor):
         return contas, False, "CPF de origem ou destino não encontrado."
     if valor <= 0:
         return contas, False, "Valor de transferência inválido."
-    if valor > conta_origem["saldo"]:
-        return contas, False, "Saldo insuficiente para a transferência."
+    if valor > conta_origem["saldo"] + conta_origem.get("limite_conta", 0.0):
+        return contas, False, "Saldo e limite insuficientes para a transferência."
 
     conta_origem["saldo"] = saque(conta_origem["saldo"], valor)
     conta_destino["saldo"] = deposito(conta_destino["saldo"], valor)
