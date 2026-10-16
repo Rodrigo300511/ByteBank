@@ -105,23 +105,23 @@ while True:
         valor_deposito = float(input("Digite o valor do depósito: "))
 
         if valor_deposito > 0:
-            dados_conta = repositorio.carregar_conta(cpf)
-            saldo = conta.deposito(dados_conta["saldo"], valor_deposito)
-            repositorio.salvar_conta(cpf, saldo=saldo)
+            conta_corrente = repositorio.carregar_conta_corrente(cpf)
+            conta_corrente.depositar(valor_deposito)
+            repositorio.salvar_conta_corrente(conta_corrente)
             pilha_desfazer.append({"tipo": "deposito", "valor": valor_deposito})
             repositorio.registrar_extrato(cpf, "deposito", "Depósito em conta", valor_deposito)
-            print(f"Depósito realizado! Saldo: R$ {saldo:.2f}")
+            print(f"Depósito realizado! Saldo: R$ {conta_corrente.consultar_saldo():.2f}")
         else:
             print("Valor de depósito inválido.")
 
     elif opcao == 2:
         valor_saque = float(input("Digite o valor do saque: "))
-        dados_conta = repositorio.carregar_conta(cpf)
+        conta_corrente = repositorio.carregar_conta_corrente(cpf)
 
         if valor_saque <= 0:
             print("Valor de saque inválido.")
 
-        elif valor_saque > dados_conta["saldo"] + dados_conta["limite_conta"]:
+        elif valor_saque > conta_corrente.consultar_saldo() + conta_corrente.consultar_limite():
             print("Saldo e limite insuficientes.")
 
         else:
@@ -133,12 +133,14 @@ while True:
 
             if 1 <= indice_categoria <= len(categorias.CATEGORIAS):
                 categoria_escolhida = categorias.CATEGORIAS[indice_categoria - 1]
-                saldo = conta.saque(dados_conta["saldo"], valor_saque)
+                conta_corrente.sacar(valor_saque)
+                saldo = conta_corrente.consultar_saldo()
                 pontos_ganhos = fidelidade.calcular_pontos(valor_saque)
-                pontos_bytepoints = dados_conta["pontos_bytepoints"] + pontos_ganhos
+                pontos_bytepoints = repositorio.carregar_conta(cpf)["pontos_bytepoints"] + pontos_ganhos
 
                 repositorio.registrar_gasto(cpf, categoria_escolhida, valor_saque)
-                repositorio.salvar_conta(cpf, saldo=saldo, pontos_bytepoints=pontos_bytepoints)
+                repositorio.salvar_conta_corrente(conta_corrente)
+                repositorio.salvar_conta(cpf, pontos_bytepoints=pontos_bytepoints)
                 pilha_desfazer.append({"tipo": "saque", "valor": valor_saque})
                 repositorio.registrar_extrato(cpf, "saque", f"Saque - {categoria_escolhida}", -valor_saque)
                 print(f"Saque realizado! Saldo: R$ {saldo:.2f} | +{pontos_ganhos} BytePoints")
@@ -146,8 +148,8 @@ while True:
                 print("Categoria inválida. Saque cancelado.")
 
     elif opcao == 3:
-        dados_conta = repositorio.carregar_conta(cpf)
-        print(f"Seu saldo é de: R$ {conta.mostrar_saldo(dados_conta['saldo']):.2f}")
+        conta_corrente = repositorio.carregar_conta_corrente(cpf)
+        print(f"Seu saldo é de: R$ {conta_corrente.consultar_saldo():.2f}")
 
     elif opcao == 4:
         nome_caixinha = input("Digite o nome da caixinha: ")
